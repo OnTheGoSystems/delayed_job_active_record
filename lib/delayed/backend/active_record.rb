@@ -1,6 +1,8 @@
 # frozen_string_literal: true
 
 require "active_record/version"
+require_relative './active_record/fair_sql/service'
+
 module Delayed
   module Backend
     module ActiveRecord
@@ -96,13 +98,8 @@ module Delayed
           when :default_sql
             reserve_with_scope_using_default_sql(ready_scope, worker, now)
           when :fair_sql
-            raise ArgumentError, ":fair_sql is allowed only for MySQL" unless connection.adapter_name.downcase.include?('mysql')
-            reserve_with_scope_using_fair_sql(ready_scope, worker, now)
+            Delayed::Backend::ActiveRecord::FairSql::Service.reserve(ready_scope, worker, now)
           end
-        end
-
-        def self.reserve_with_scope_using_fair_sql(ready_scope, worker, now)
-          reserve_with_scope_using_optimized_sql(ready_scope, worker, now)
         end
 
         def self.reserve_with_scope_using_optimized_sql(ready_scope, worker, now)
