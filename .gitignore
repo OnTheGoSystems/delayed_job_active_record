@@ -1,6 +1,7 @@
 *.swp
 .bundle
 .rvmrc
+.idea
 Gemfile.lock
 bin
 coverage
