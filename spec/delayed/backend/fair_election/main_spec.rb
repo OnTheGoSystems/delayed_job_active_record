@@ -42,7 +42,7 @@ describe Delayed::Backend::ActiveRecord::FairSql::Service do
     def process_next_job!
       job = Delayed::Backend::ActiveRecord::Job.reserve(worker)
       if job
-        processing_order << jobs.key(job)
+        processing_order << [job.fair_id, jobs.key(job)].join
         job.delete
       end
     end
@@ -50,7 +50,7 @@ describe Delayed::Backend::ActiveRecord::FairSql::Service do
     context 'when no ranks calculated' do
       it 'processes using simple order' do
         jobs.keys.size.times { process_next_job! }
-        expect(processing_order).to eq [3, 5, 6, 9, 10, 11, 12]
+        expect(processing_order).to eq ["A3", "B5", "C6", "E9", "E10", "E11", "E12"]
       end
     end
 
@@ -71,6 +71,15 @@ describe Delayed::Backend::ActiveRecord::FairSql::Service do
 
         fetched_ranks = described_class.fetch_ranks
         expect(fetched_ranks).to eq(expected_ranks)
+      end
+
+      it 'uses ranks for job election' do
+        jobs.keys.size.times do
+          process_next_job!
+          described_class.recalculate_ranks!
+        end
+
+        expect(processing_order).to eq ["C6", "E9", "E10", "E11", "E12", "B5", "A3"]
       end
     end
   end
