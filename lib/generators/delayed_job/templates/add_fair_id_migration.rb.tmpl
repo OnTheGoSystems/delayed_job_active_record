@@ -2,9 +2,19 @@ class AddFairIdToDelayedJobs < ActiveRecord::Migration<%= migration_version %>
   def self.up
     add_column :delayed_jobs, :fair_id, :string
     add_index :delayed_jobs, [:fair_id], name: "delayed_jobs_fair_id"
+
+    create_table :delayed_jobs_fair_ranks do |table|
+      table.string :fair_id
+      table.integer :busy, default: 0
+      table.integer :waiting, default: 0
+      table.integer :rank, default: 0
+    end
+
+    add_index :delayed_jobs_fair_ranks, [:fair_id, :rank], name: "delayed_jobs_fair_ranks_index"
   end
 
   def self.down
     remove_column :delayed_jobs, :fair_id
+    drop_table :delayed_jobs_fair_ranks
   end
 end
