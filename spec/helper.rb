@@ -27,6 +27,7 @@ rescue LoadError # rubocop:disable Lint/SuppressedException
 end
 require "delayed_job_active_record"
 require "delayed/backend/shared_spec"
+require 'pry'
 
 Delayed::Worker.logger = Logger.new("/tmp/dj.log")
 ENV["RAILS_ENV"] = "test"

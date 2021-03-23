@@ -12,8 +12,9 @@ module Delayed
         end
 
         def reserve_sql_strategy=(val)
-          if !(val == :optimized_sql || val == :default_sql)
-            raise ArgumentError, "allowed values are :optimized_sql or :default_sql"
+
+          unless %i(optimized_sql default_sql fair_sql).include?(val)
+            raise ArgumentError, "allowed values are :optimized_sql or :default_sql, :fair_sql"
           end
 
           @reserve_sql_strategy = val
@@ -94,7 +95,14 @@ module Delayed
           # See https://github.com/collectiveidea/delayed_job_active_record/pull/89 for more details.
           when :default_sql
             reserve_with_scope_using_default_sql(ready_scope, worker, now)
+          when :fair_sql
+            raise ArgumentError, ":fair_sql is allowed only for MySQL" unless connection.adapter_name.downcase.include?('mysql')
+            reserve_with_scope_using_fair_sql(ready_scope, worker, now)
           end
+        end
+
+        def self.reserve_with_scope_using_fair_sql(ready_scope, worker, now)
+          reserve_with_scope_using_optimized_sql(ready_scope, worker, now)
         end
 
         def self.reserve_with_scope_using_optimized_sql(ready_scope, worker, now)

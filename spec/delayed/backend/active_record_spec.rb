@@ -73,6 +73,25 @@ describe Delayed::Backend::ActiveRecord::Job do
         expect(Delayed::Backend::ActiveRecord::Job).to have_received(:reserve_with_scope_using_default_sql).once
       end
     end
+
+    context "with reserve_sql_strategy option set to :fair_sql" do
+      let(:dbms) { "MySQL" }
+      let(:reserve_sql_strategy) { :fair_sql }
+
+      it "uses the fair sql version" do
+        allow(Delayed::Backend::ActiveRecord::Job).to receive(:reserve_with_scope_using_optimized_sql)
+        Delayed::Backend::ActiveRecord::Job.reserve_with_scope(scope, worker, Time.current)
+        expect(Delayed::Backend::ActiveRecord::Job).to have_received(:reserve_with_scope_using_optimized_sql).once
+      end
+
+      context 'when not MySQL' do
+        let(:dbms) { "OtherDB" }
+
+        it "raises error" do
+          expect { Delayed::Backend::ActiveRecord::Job.reserve_with_scope(scope, worker, Time.current) }.to raise_error(ArgumentError)
+        end
+      end
+    end
   end
 
   context "db_time_now" do
