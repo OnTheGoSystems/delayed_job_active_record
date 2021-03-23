@@ -1,0 +1,10 @@
+class AddFairIdToDelayedJobs < ActiveRecord::Migration<%= migration_version %>
+  def self.up
+    add_column :delayed_jobs, :fair_id, :string
+    add_index :delayed_jobs, [:fair_id], name: "delayed_jobs_fair_id"
+  end
+
+  def self.down
+    remove_column :delayed_jobs, :fair_id
+  end
+end
