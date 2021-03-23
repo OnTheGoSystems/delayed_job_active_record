@@ -8,9 +8,10 @@ class AddFairIdToDelayedJobs < ActiveRecord::Migration<%= migration_version %>
       table.integer :busy, default: 0
       table.integer :waiting, default: 0
       table.integer :rank, default: 0
+      table.integer :timestamp, default: 0
     end
 
-    add_index :delayed_jobs_fair_ranks, [:fair_id, :rank], name: "delayed_jobs_fair_ranks_index"
+    add_index :delayed_jobs_fair_ranks, [:fair_id, :rank, :timestamp], name: "delayed_jobs_fair_ranks_index"
   end
 
   def self.down

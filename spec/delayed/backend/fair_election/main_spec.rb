@@ -14,6 +14,7 @@ describe Delayed::Backend::ActiveRecord::FairSql::Service do
   end
 
   let!(:jobs) do
+    Delayed::Job.delete_all
     n = 1
     {
       1 => n.delay(fair_id: 'A', locked_at: 5.minutes.ago).to_s,
@@ -46,12 +47,31 @@ describe Delayed::Backend::ActiveRecord::FairSql::Service do
       end
     end
 
-    before do
-      jobs.keys.size.times { process_next_job! }
+    context 'when no ranks calculated' do
+      it 'processes using simple order' do
+        jobs.keys.size.times { process_next_job! }
+        expect(processing_order).to eq [3, 5, 6, 9, 10, 11, 12]
+      end
     end
 
-    it do
-      expect(processing_order).to eq [3, 5, 6, 9, 10, 11, 12]
+    context 'when ranks calculated' do
+      let(:expected_ranks) do
+        [
+          { fair_id: 'A', busy: 2, waiting: 1, rank: -1 },
+          { fair_id: 'B', busy: 1, waiting: 1, rank: 0 },
+          { fair_id: 'C', busy: 0, waiting: 1, rank: 1 },
+          { fair_id: 'D', busy: 2, waiting: 0, rank: -2 },
+          { fair_id: 'E', busy: 0, waiting: 4, rank: 1 },
+        ]
+      end
+
+      it 'returns ranks' do
+        ranks = described_class.recalculate_ranks!
+        expect(ranks).to eq(expected_ranks)
+
+        fetched_ranks = described_class.fetch_ranks
+        expect(fetched_ranks).to eq(expected_ranks)
+      end
     end
   end
 end
