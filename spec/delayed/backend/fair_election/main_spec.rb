@@ -81,6 +81,26 @@ describe Delayed::Backend::ActiveRecord::FairSql::Service do
 
         expect(processing_order).to eq ["C6", "E9", "E10", "E11", "E12", "B5", "A3"]
       end
+
+      it 'uses respects order of jobs when new jobs created, and some jobs processed' do
+        jobs.keys.size.times do |index|
+          process_next_job!
+
+          if index == 2
+            jobs[jobs.size + 1] = 1.delay(fair_id: 'F').to_s
+            jobs[jobs.size + 1] = 1.delay(fair_id: 'F').to_s
+          end
+
+          if index == 5
+            jobs[1].delete
+            jobs[2].delete
+          end
+
+          described_class.recalculate_ranks!
+        end
+
+        expect(processing_order).to eq ["C6", "E9", "E10", "E11", "E12", "F13", "A3", "F14", "B5"]
+      end
     end
   end
 end
