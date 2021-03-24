@@ -54,8 +54,8 @@ module Delayed
               end
             end
 
-            def best_ranks
-              fetch_ranks.sort_by { |r| r[:rank] }.reverse[0..JOIN_LIMIT].to_a
+            def clean_ranks
+              rank_klass.clean_outdated!
             end
 
             def newest_timestamp

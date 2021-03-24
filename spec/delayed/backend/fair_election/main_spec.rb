@@ -74,6 +74,8 @@ describe Delayed::Backend::ActiveRecord::FairSql::Service do
       end
 
       it 'uses ranks for job election' do
+        described_class.recalculate_ranks!
+
         jobs.keys.size.times do
           process_next_job!
           described_class.recalculate_ranks!
@@ -82,7 +84,35 @@ describe Delayed::Backend::ActiveRecord::FairSql::Service do
         expect(processing_order).to eq ["C6", "E9", "E10", "E11", "E12", "B5", "A3"]
       end
 
+      it 'cleans old ranks' do
+        described_class.recalculate_ranks!
+
+        2.times do
+          process_next_job!
+          sleep 1.5
+          described_class.recalculate_ranks!
+        end
+
+        ranks_before_cleaning = described_class.rank_klass.count
+        described_class.clean_ranks
+        ranks_after_cleaning = described_class.rank_klass.count
+
+        expect(ranks_after_cleaning < ranks_before_cleaning).to be_truthy
+      end
+
+      it 'when ranks missing' do
+        described_class.recalculate_ranks!
+
+        jobs.keys.size.times do
+          process_next_job!
+        end
+
+        expect(processing_order).to eq ["C6", "E9", "E10", "E11", "E12", "B5", "A3"]
+      end
+
       it 'uses respects order of jobs when new jobs created, and some jobs processed' do
+        described_class.recalculate_ranks!
+
         jobs.keys.size.times do |index|
           process_next_job!
 
