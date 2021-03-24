@@ -5,7 +5,7 @@ module Delayed
         class Rank < ::ActiveRecord::Base
           self.table_name = 'delayed_jobs_fair_ranks'
 
-          NEGATIVE_RANK = -10**10
+          NEGATIVE_RANK = -10**6
           SYSTEM_RECORD = 'DJ_SYSTEM_PRIMARY'.freeze
 
           scope :not_system, -> { where.not(fair_id: SYSTEM_RECORD) }

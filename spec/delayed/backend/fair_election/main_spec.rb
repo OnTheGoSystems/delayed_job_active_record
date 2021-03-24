@@ -11,6 +11,7 @@ describe Delayed::Backend::ActiveRecord::FairSql::Service do
   before do
     allow(Delayed::Backend::ActiveRecord::Job.connection).to receive(:adapter_name).at_least(:once).and_return(dbms)
     Delayed::Backend::ActiveRecord.configuration.reserve_sql_strategy = :fair_sql
+    allow(described_class).to receive(:order) { "`delayed_jobs_fair_ranks`.`rank`" }
   end
 
   let!(:jobs) do
@@ -57,10 +58,10 @@ describe Delayed::Backend::ActiveRecord::FairSql::Service do
     context 'when ranks calculated' do
       let(:expected_ranks) do
         [
-          { fair_id: 'A', busy: 2, waiting: 1, rank: -1 },
-          { fair_id: 'B', busy: 1, waiting: 1, rank: 0 },
+          { fair_id: 'A', busy: 2, waiting: 1, rank: -2 },
+          { fair_id: 'B', busy: 1, waiting: 1, rank: -1 },
           { fair_id: 'C', busy: 0, waiting: 1, rank: 1 },
-          { fair_id: 'D', busy: 2, waiting: 0, rank: -2 },
+          { fair_id: 'D', busy: 2, waiting: 0, rank: -3 },
           { fair_id: 'E', busy: 0, waiting: 4, rank: 1 },
         ]
       end

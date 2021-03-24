@@ -14,7 +14,9 @@ module Delayed
             def reserve(ready_scope, worker, now)
               raise ArgumentError, ":fair_sql is allowed only for MySQL" unless job_klass.connection.adapter_name.downcase.include?('mysql')
               scope = ready_scope
-              top_ranks = "SELECT * FROM delayed_jobs_fair_ranks ORDER BY rank DESC LIMIT #{JOIN_LIMIT}"
+
+              top_ranks = "SELECT `delayed_jobs_fair_ranks`.* FROM `delayed_jobs_fair_ranks` " +
+                "ORDER BY #{order} DESC LIMIT #{JOIN_LIMIT}"
               scope = scope.joins("LEFT JOIN (#{top_ranks}) AS ranks ON ranks.fair_id = delayed_jobs.fair_id")
               scope = scope.reorder("rank DESC, priority ASC, run_at ASC")
 
@@ -44,6 +46,7 @@ module Delayed
               stats.map do |st|
                 diff = st.w - st.b
                 rank = diff <= 0 ? diff : 1
+                rank -= 1 if st.b > 0
                 { fair_id: st.fair_id, busy: st.b, waiting: st.w, rank: rank, timestamp: timestamp }
               end
             end
@@ -60,6 +63,10 @@ module Delayed
 
             def newest_timestamp
               Time.now.utc.to_i
+            end
+
+            def order
+              "`delayed_jobs_fair_ranks`.`rank` DESC, rand()"
             end
 
             def rank_klass
