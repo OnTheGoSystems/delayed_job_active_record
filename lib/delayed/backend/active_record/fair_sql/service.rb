@@ -16,7 +16,7 @@ module Delayed
               scope = ready_scope
               top_ranks = "SELECT * FROM delayed_jobs_fair_ranks ORDER BY delayed_jobs_fair_ranks.rank DESC LIMIT #{JOIN_LIMIT}"
               scope = scope.joins("LEFT JOIN (#{top_ranks}) AS ranks ON ranks.fair_id = delayed_jobs.fair_id")
-              scope = scope.reorder("rank DESC, priority ASC, run_at ASC")
+              scope = scope.reorder("ranks.rank DESC, delayed_jobs.priority ASC, delayed_jobs.run_at ASC")
 
               job_klass.reserve_with_scope_using_optimized_sql(scope, worker, now)
             end
