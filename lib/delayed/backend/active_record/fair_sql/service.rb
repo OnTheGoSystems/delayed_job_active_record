@@ -36,11 +36,11 @@ module Delayed
             end
 
             def calculate_ranks(timestamp = newest_timestamp)
-              stats = job_klass.group(:fair_id).select(
+              stats = job_klass.where(last_error: nil).group(:fair_id).select(
                 [
                   'fair_id',
-                  'sum(case when locked_at IS NOT NULL AND last_error IS NULL then 1 else 0 end) as b',
-                  'sum(case when locked_at IS NOT NULL AND last_error IS NULL then 0 else 1 end) as w'
+                  'sum(case when locked_at IS NOT NULL then 1 else 0 end) as b',
+                  'sum(case when locked_at IS NOT NULL then 0 else 1 end) as w'
                 ].join(',')
               )
 
