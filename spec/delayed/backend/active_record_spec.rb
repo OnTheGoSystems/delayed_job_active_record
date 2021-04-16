@@ -79,8 +79,11 @@ describe Delayed::Backend::ActiveRecord::Job do
       let(:reserve_sql_strategy) { :fair_sql }
 
       it "uses the fair sql version" do
-        allow(scope).to receive(:joins) { scope }
-        allow(scope).to receive(:reorder) { scope }
+        expect(scope).to receive(:joins) { scope }
+        expect(scope).to receive(:select) { scope }
+        expect(scope).to receive(:group) { scope }
+        expect(scope).to receive(:distinct) { scope }
+        expect(scope).to receive(:reorder) { scope }
         allow(Delayed::Backend::ActiveRecord::Job).to receive(:reserve_with_scope_using_optimized_sql)
         Delayed::Backend::ActiveRecord::Job.reserve_with_scope(scope, worker, Time.current)
         expect(Delayed::Backend::ActiveRecord::Job).to have_received(:reserve_with_scope_using_optimized_sql).once

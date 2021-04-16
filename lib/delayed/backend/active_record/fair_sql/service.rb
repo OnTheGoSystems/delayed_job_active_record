@@ -20,14 +20,14 @@ module Delayed
             def apply_ranks(scope)
               top_ranks = "SELECT * FROM delayed_jobs_fair_ranks WHERE timestamp = #{rank_klass.current_timestamp!} ORDER BY delayed_jobs_fair_ranks.rank DESC LIMIT #{JOIN_LIMIT}"
               scope = scope.joins("LEFT JOIN (#{top_ranks}) AS ranks ON ranks.fair_id = delayed_jobs.fair_id")
-              scope.select(select_grouped).group(:fair_id).distinct
+              scope = scope.select(select_grouped).group(:fair_id).distinct
               scope = scope.reorder("delayed_jobs.priority ASC, ranks.rank DESC, #{rand_func} delayed_jobs.run_at ASC")
               scope
             end
 
             def select_grouped
-              columns = %w[id priority attempts handler last_error run_at locked_at failed_at locked_by queue]
-              columns.map { |c| "ANY_VALUE(#{c}) as #{c}" }.join(',')
+              columns = %w[delayed_jobs.id priority attempts handler last_error run_at locked_at failed_at locked_by queue delayed_jobs.fair_id]
+              columns.map { |c| "ANY_VALUE(#{c}) as #{c.split('.').last}" }.join(',')
             end
 
             def recalculate_ranks!(timestamp = newest_timestamp)
