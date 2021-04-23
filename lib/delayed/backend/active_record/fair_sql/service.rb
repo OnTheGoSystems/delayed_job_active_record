@@ -10,6 +10,7 @@ module Delayed
           class << self
             RANK_SAVING_BATCH = 200
             JOIN_LIMIT = 100
+            attr_accessor :queues
 
             def reserve(ready_scope, worker, now)
               raise ArgumentError, ":fair_sql is allowed only for MySQL" unless job_klass.connection.adapter_name.downcase.include?('mysql')
@@ -18,11 +19,16 @@ module Delayed
             end
 
             def apply_ranks(scope)
-              top_ranks = "SELECT * FROM delayed_jobs_fair_ranks WHERE timestamp = #{rank_klass.current_timestamp!} ORDER BY delayed_jobs_fair_ranks.rank DESC LIMIT #{JOIN_LIMIT}"
-              scope = scope.joins("LEFT JOIN (#{top_ranks}) AS ranks ON ranks.fair_id = delayed_jobs.fair_id")
-              scope = scope.select(select_grouped).group(:fair_id).distinct
-              scope = scope.reorder("delayed_jobs.priority ASC, ranks.rank DESC, #{rand_func} delayed_jobs.run_at ASC")
-              scope
+              if queues.nil? || (self.queues & Worker.queues).size > 0
+                top_ranks = "SELECT * FROM delayed_jobs_fair_ranks WHERE timestamp = #{rank_klass.current_timestamp!} ORDER BY delayed_jobs_fair_ranks.rank DESC LIMIT #{JOIN_LIMIT}"
+                scope = scope.joins("LEFT JOIN (#{top_ranks}) AS ranks ON ranks.fair_id = delayed_jobs.fair_id")
+                scope = scope.select(select_grouped).group(:fair_id).distinct
+                scope = scope.reorder("delayed_jobs.priority ASC, ranks.rank DESC #{rand_func}")
+                scope
+              else
+                scope = scope.reorder("delayed_jobs.priority ASC #{rand_func}")
+                scope
+              end
             end
 
             def select_grouped
@@ -60,7 +66,7 @@ module Delayed
             end
 
             def rand_func
-              'rand(), '
+              ', rand() '
             end
 
             def fetch_ranks
