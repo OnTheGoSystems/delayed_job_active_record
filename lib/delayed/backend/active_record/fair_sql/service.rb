@@ -48,7 +48,10 @@ module Delayed
             end
 
             def calculate_ranks(timestamp = newest_timestamp)
-              stats = job_klass.where(last_error: nil).group(:fair_id).select(
+              scope = job_klass
+              scope = scope.where(queue: self.queues) if self.queues.present? && self.queues.size > 0
+
+              stats = scope.where(last_error: nil).group(:fair_id).select(
                 [
                   'fair_id',
                   'sum(case when locked_at IS NOT NULL then 1 else 0 end) as b',
@@ -56,13 +59,15 @@ module Delayed
                 ].join(',')
               )
 
-              stats.map do |st|
+              ranks = stats.map do |st|
                 diff = st.w - st.b
                 rank = diff <= 0 ? diff : 1
                 rank -= 1 if st.b > 0
                 # rank = rank * 1000 + rand(100)
                 { fair_id: st.fair_id, busy: st.b, waiting: st.w, rank: rank, timestamp: timestamp }
               end
+
+              ranks.uniq
             end
 
             def rand_func
