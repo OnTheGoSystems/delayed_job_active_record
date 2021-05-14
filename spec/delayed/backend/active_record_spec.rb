@@ -84,7 +84,7 @@ describe Delayed::Backend::ActiveRecord::Job do
         expect(scope).to receive(:group) { scope }
         expect(scope).to receive(:distinct) { scope }
         expect(scope).to receive(:reorder) { scope }
-        expect(scope).to receive(:order) { scope }
+
         allow(Delayed::Backend::ActiveRecord::Job).to receive(:reserve_with_scope_using_optimized_sql)
         Delayed::Backend::ActiveRecord::Job.reserve_with_scope(scope, worker, Time.current)
         expect(Delayed::Backend::ActiveRecord::Job).to have_received(:reserve_with_scope_using_optimized_sql).once

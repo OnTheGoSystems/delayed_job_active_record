@@ -23,10 +23,10 @@ module Delayed
                 top_ranks = "SELECT * FROM delayed_jobs_fair_ranks WHERE timestamp = #{rank_klass.current_timestamp!} ORDER BY delayed_jobs_fair_ranks.rank DESC LIMIT #{JOIN_LIMIT}"
                 scope = scope.joins("LEFT JOIN (#{top_ranks}) AS ranks ON ranks.fair_id = delayed_jobs.fair_id")
                 scope = scope.select(select_grouped).group(:fair_id).distinct
-                scope = scope.reorder('delayed_jobs.priority' => 'ASC', 'ranks.rank' => 'DESC').order(rand_order)
+                scope = scope.reorder("delayed_jobs.priority ASC, ranks.rank DESC, #{rand_order}")
                 scope
               else
-                scope = scope.reorder('delayed_jobs.priority' => 'ASC').order(rand_order)
+                scope = scope.reorder("delayed_jobs.priority, #{rand_order}")
                 scope
               end
             end
@@ -71,7 +71,7 @@ module Delayed
             end
 
             def rand_order
-              Arel.sql('random()')
+              'rand()'
             end
 
             def fetch_ranks

@@ -11,7 +11,7 @@ describe Delayed::Backend::ActiveRecord::FairSql::Service do
   before do
     allow(Delayed::Backend::ActiveRecord::Job.connection).to receive(:adapter_name).at_least(:once).and_return(dbms)
     Delayed::Backend::ActiveRecord.configuration.reserve_sql_strategy = :fair_sql
-    allow(described_class).to receive(:rand_order) { {} }
+    allow(described_class).to receive(:rand_order) { 'delayed_jobs.id ASC' }
   end
 
   let!(:jobs) do
