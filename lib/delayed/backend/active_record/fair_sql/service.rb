@@ -59,15 +59,15 @@ module Delayed
                 ].join(',')
               )
 
-              ranks = stats.map do |st|
-                diff = st.w - st.b
-                rank = diff <= 0 ? diff : 1
-                rank -= 1 if st.b > 0
-                # rank = rank * 1000 + rand(100)
-                { fair_id: st.fair_id, busy: st.b, waiting: st.w, rank: rank, timestamp: timestamp }
+              stats.map do |st|
+                { fair_id: st.fair_id, busy: st.b, waiting: st.w, rank: calc_rank(st.b, st.w), timestamp: timestamp }
               end
+            end
 
-              ranks.uniq
+            def calc_rank(busy, waiting)
+              rank = (busy * -100)
+              rank -= 1 if busy > 0 && waiting > 0
+              rank
             end
 
             def rand_func
