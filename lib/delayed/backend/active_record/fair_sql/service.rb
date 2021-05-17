@@ -10,7 +10,9 @@ module Delayed
           class << self
             RANK_SAVING_BATCH = 200
             JOIN_LIMIT = 100
-            attr_accessor :queues
+            BUSY = -100
+
+            attr_accessor :queues, :max_busy
 
             def reserve(ready_scope, worker, now)
               raise ArgumentError, ":fair_sql is allowed only for MySQL" unless job_klass.connection.adapter_name.downcase.include?('mysql')
@@ -23,6 +25,9 @@ module Delayed
                 top_ranks = "SELECT * FROM delayed_jobs_fair_ranks WHERE timestamp = #{rank_klass.current_timestamp!} ORDER BY delayed_jobs_fair_ranks.rank DESC LIMIT #{JOIN_LIMIT}"
                 scope = scope.joins("LEFT JOIN (#{top_ranks}) AS ranks ON ranks.fair_id = delayed_jobs.fair_id")
                 scope = scope.select(select_grouped).group(:fair_id).distinct
+                if self.max_busy
+                  scope = scope.where('ranks.rank >= ?', self.max_busy * BUSY + BUSY)
+                end
                 scope = scope.reorder("delayed_jobs.priority ASC, ranks.rank DESC, #{rand_order}")
                 scope
               else
@@ -65,7 +70,7 @@ module Delayed
             end
 
             def calc_rank(busy, waiting)
-              rank = (busy * -100)
+              rank = (busy * BUSY)
               rank -= 1 if busy > 0 && waiting > 0
               rank
             end
