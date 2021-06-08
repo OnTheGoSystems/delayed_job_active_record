@@ -24,7 +24,7 @@ module Delayed
               if queues.nil? || (self.queues & Worker.queues).size > 0
                 top_ranks = "SELECT * FROM delayed_jobs_fair_ranks WHERE timestamp = #{rank_klass.current_timestamp!} ORDER BY delayed_jobs_fair_ranks.rank DESC LIMIT #{JOIN_LIMIT}"
                 scope = scope.joins("LEFT JOIN (#{top_ranks}) AS ranks ON ranks.fair_id = delayed_jobs.fair_id")
-                scope = scope.select(select_grouped).group(:fair_id).distinct
+                # scope = scope.select(select_grouped).group(:fair_id).distinct
                 if self.max_busy
                   scope = scope.where('ranks.rank >= ?', self.max_busy * BUSY + BUSY)
                 end
