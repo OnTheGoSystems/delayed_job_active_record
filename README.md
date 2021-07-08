@@ -38,3 +38,7 @@ migration to add a column to your delayed_jobs table.
     rake db:migrate
 
 That's it. Use [delayed_job as normal](http://github.com/collectiveidea/delayed_job).
+
+## Enabling Fair Balancer
+
+Run `rails g delayed_job:fair_id && rake db:migrate`

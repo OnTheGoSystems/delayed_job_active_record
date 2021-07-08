@@ -21,6 +21,7 @@ group :test do
 
   gem "simplecov", ">= 0.20.0", require: false
   gem "simplecov-lcov", ">= 0.8.0", require: false
+  gem 'pry'
 end
 
 group :rubocop do

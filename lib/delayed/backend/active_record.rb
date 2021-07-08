@@ -1,6 +1,8 @@
 # frozen_string_literal: true
 
 require "active_record/version"
+require_relative './active_record/fair_sql/service'
+
 module Delayed
   module Backend
     module ActiveRecord
@@ -12,8 +14,9 @@ module Delayed
         end
 
         def reserve_sql_strategy=(val)
-          if !(val == :optimized_sql || val == :default_sql)
-            raise ArgumentError, "allowed values are :optimized_sql or :default_sql"
+
+          unless %i(optimized_sql default_sql fair_sql).include?(val)
+            raise ArgumentError, "allowed values are :optimized_sql or :default_sql, :fair_sql"
           end
 
           @reserve_sql_strategy = val
@@ -94,6 +97,8 @@ module Delayed
           # See https://github.com/collectiveidea/delayed_job_active_record/pull/89 for more details.
           when :default_sql
             reserve_with_scope_using_default_sql(ready_scope, worker, now)
+          when :fair_sql
+            Delayed::Backend::ActiveRecord::FairSql::Service.reserve(ready_scope, worker, now)
           end
         end
 

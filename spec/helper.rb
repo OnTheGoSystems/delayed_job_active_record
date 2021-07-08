@@ -27,6 +27,7 @@ rescue LoadError # rubocop:disable Lint/SuppressedException
 end
 require "delayed_job_active_record"
 require "delayed/backend/shared_spec"
+require 'pry'
 
 Delayed::Worker.logger = Logger.new("/tmp/dj.log")
 ENV["RAILS_ENV"] = "test"
@@ -55,24 +56,29 @@ if db_adapter == "mysql2"
   types[:primary_key] = types[:primary_key].sub(" DEFAULT NULL", "")
 end
 
-migration_template = File.open("lib/generators/delayed_job/templates/migration.rb")
+migration_templates = [
+  File.open("lib/generators/delayed_job/templates/migration.rb.tmpl"),
+  File.open("lib/generators/delayed_job/templates/add_fair_id_migration.rb.tmpl"),
+]
 
-# need to eval the template with the migration_version intact
-migration_context =
-  Class.new do
-    def my_binding
-      binding
+migration_templates.each do |migration_template|
+  # need to eval the template with the migration_version intact
+  migration_context =
+    Class.new do
+      def my_binding
+        binding
+      end
+
+      private
+
+      def migration_version
+        "[#{ActiveRecord::VERSION::MAJOR}.#{ActiveRecord::VERSION::MINOR}]" if ActiveRecord::VERSION::MAJOR >= 5
+      end
     end
 
-    private
-
-    def migration_version
-      "[#{ActiveRecord::VERSION::MAJOR}.#{ActiveRecord::VERSION::MINOR}]" if ActiveRecord::VERSION::MAJOR >= 5
-    end
-  end
-
-migration_ruby = ERB.new(migration_template.read).result(migration_context.new.my_binding)
-eval(migration_ruby) # rubocop:disable Security/Eval
+  migration_ruby = ERB.new(migration_template.read).result(migration_context.new.my_binding)
+  eval(migration_ruby) # rubocop:disable Security/Eval
+end
 
 ActiveRecord::Schema.define do
   if table_exists?(:delayed_jobs)
@@ -81,6 +87,13 @@ ActiveRecord::Schema.define do
   end
 
   CreateDelayedJobs.up
+
+  if table_exists?(:delayed_jobs_fair_ranks)
+    # `if_exists: true` was only added in Rails 5
+    drop_table :delayed_jobs_fair_ranks
+  end
+
+  AddFairIdToDelayedJobs.up
 
   create_table :stories, primary_key: :story_id, force: true do |table|
     table.string :text
