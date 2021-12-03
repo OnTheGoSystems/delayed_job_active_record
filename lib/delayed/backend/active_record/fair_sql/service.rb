@@ -12,7 +12,7 @@ module Delayed
             JOIN_LIMIT = 100
             BUSY = -100
 
-            attr_accessor :queues, :max_busy
+            attr_accessor :queues, :max_busy, :table_queues
 
             def reserve(ready_scope, worker, now)
               raise ArgumentError, ":fair_sql is allowed only for MySQL" unless job_klass.connection.adapter_name.downcase.include?('mysql')

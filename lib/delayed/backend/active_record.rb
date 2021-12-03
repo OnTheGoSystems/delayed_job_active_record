@@ -49,8 +49,17 @@ module Delayed
         before_save :set_default_run_at
 
         def self.set_delayed_job_table_name
-          delayed_job_table_name = "#{::ActiveRecord::Base.table_name_prefix}delayed_jobs"
-          self.table_name = delayed_job_table_name
+          name = dynamic_table_name
+          self.table_name = name
+        end
+
+        def self.dynamic_table_name
+          Worker.queues.each do |q|
+            t = Delayed::Backend::ActiveRecord::FairSql::Service.table_queues[q.to_sym]
+            return t if t
+          end
+
+          'delayed_jobs'
         end
 
         set_delayed_job_table_name
@@ -89,6 +98,8 @@ module Delayed
         end
 
         def self.reserve_with_scope(ready_scope, worker, now)
+          set_delayed_job_table_name
+
           case Delayed::Backend::ActiveRecord.configuration.reserve_sql_strategy
           # Optimizations for faster lookups on some common databases
           when :optimized_sql
