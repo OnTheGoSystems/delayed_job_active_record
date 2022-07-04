@@ -52,9 +52,9 @@ module Delayed
               ranks.map { |r| r.except(:timestamp) }
             end
 
-            def calculate_ranks(timestamp = newest_timestamp)
+            def calculate_ranks(timestamp = newest_timestamp, queues = self.queues)
               scope = job_klass
-              scope = scope.where(queue: self.queues) if self.queues.present? && self.queues.size > 0
+              scope = scope.where(queue: queues) if queues.present? && queues.size > 0
 
               stats = scope.where(last_error: nil).group(:fair_id).select(
                 [
