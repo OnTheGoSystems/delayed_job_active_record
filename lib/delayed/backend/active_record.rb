@@ -62,7 +62,7 @@ module Delayed
           'delayed_jobs'
         end
 
-        def refresh_node!
+        def self.refresh_node!
           SSDJ.manager.start_session unless SSDJ.manager.current
 
           @@node ||= SSDJ::Node.create
