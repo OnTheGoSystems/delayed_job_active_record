@@ -3,6 +3,8 @@
 require "active_record/version"
 require_relative './active_record/fair_sql/service'
 
+require Rails.root.join('lib/ssdj').to_s
+
 module Delayed
   module Backend
     module ActiveRecord
@@ -65,13 +67,11 @@ module Delayed
         end
 
         def self.refresh_node!
-          @@node ||= (sleep(rand(5) + rand(100) / 100.0) && ::SSDJ::Node.create)
+          @@node ||= (sleep(rand(5) + rand(100) / 100.0) && ::SSDJ::Node.init!)
           @@node.iteration_check!
 
           Worker.queues = [@@node.queue]
           set_delayed_job_table_name
-
-          Delayed::Worker.logger.info("SSDJ [v3]: #{@@node.id} #{ Worker.queues } #{self.table_name}")
         end
 
         def self.ready_to_run(worker_name, max_run_time)
@@ -94,6 +94,7 @@ module Delayed
         # When a worker is exiting, make sure we don't have any locked jobs.
         def self.clear_locks!(worker_name)
           where(locked_by: worker_name).update_all(locked_by: nil, locked_at: nil)
+          @@node&.delete
         end
 
         def self.reserve(worker, max_run_time = Worker.max_run_time)
