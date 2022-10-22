@@ -62,7 +62,16 @@ module Delayed
           'delayed_jobs'
         end
 
-        set_delayed_job_table_name
+        def refresh_node!
+          SSDJ.manager.start_session unless SSDJ.manager.current
+
+          @@node ||= SSDJ::Node.create
+          @@node.iteration_check!
+
+          Worker.queues = [@node.queue]
+
+          set_delayed_job_table_name
+        end
 
         def self.ready_to_run(worker_name, max_run_time)
           where(
@@ -98,7 +107,7 @@ module Delayed
         end
 
         def self.reserve_with_scope(ready_scope, worker, now)
-          set_delayed_job_table_name
+          refresh_node!
 
           case Delayed::Backend::ActiveRecord.configuration.reserve_sql_strategy
           # Optimizations for faster lookups on some common databases
