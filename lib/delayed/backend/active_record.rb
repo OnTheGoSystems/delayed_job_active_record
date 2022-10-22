@@ -53,6 +53,8 @@ module Delayed
           self.table_name = name
         end
 
+        self.table_name = 'delayed_jobs'
+
         def self.dynamic_table_name
           Worker.queues.each do |q|
             t = Delayed::Backend::ActiveRecord::FairSql::Service.table_queues[q.to_sym]
@@ -63,14 +65,13 @@ module Delayed
         end
 
         def self.refresh_node!
-          SSDJ.manager.start_session unless SSDJ.manager.current
-
-          @@node ||= SSDJ::Node.create
+          @@node ||= (sleep(rand(5) + rand(100) / 100.0) && ::SSDJ::Node.create)
           @@node.iteration_check!
 
-          Worker.queues = [@node.queue]
-
+          Worker.queues = [@@node.queue]
           set_delayed_job_table_name
+
+          Delayed::Worker.logger.info("SSDJ [v3]: #{@@node.id} #{ Worker.queues } #{self.table_name}")
         end
 
         def self.ready_to_run(worker_name, max_run_time)
