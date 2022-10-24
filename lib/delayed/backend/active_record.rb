@@ -98,8 +98,9 @@ module Delayed
         end
 
         # When a worker is exiting, make sure we don't have any locked jobs.
-        def self.clear_locks!(worker_name)
+        def self.clear_locks!(worker_name, queues)
           where(locked_by: worker_name).update_all(locked_by: nil, locked_at: nil)
+          SSDJ::Concurrency::Counter.clear_all(fair_ids: @@fair_ids_to_map.keys, queue: queues.join)
           @@node&.delete
         end
 
@@ -144,13 +145,28 @@ module Delayed
           end
         end
 
+        def increment_fair_id(job, worker)
+          SSDJ::Concurrency::Counter.new(queue: worker.queues.join, fair_id: job.fair_id).increment
+        end
+
         def self.reserve_with_scope_using_default_sql(ready_scope, worker, now)
           # This is our old fashion, tried and true, but possibly slower lookup
           # Instead of reading the entire job record for our detect loop, we select only the id,
           # and only read the full job record after we've successfully locked the job.
           # This can have a noticable impact on large read_ahead configurations and large payload jobs.
-          ready_scope.limit(worker.read_ahead).select(:id).detect do |job|
+          @@fair_ids_to_map ||= {}
+          fair_ids_to_skip = @@fair_ids_to_map.select { |_k, v| v >= SSDJ::Concurrency::Counter.expire_max_concurrency }.map(&:first)
+
+          ready_scope.where.not(fair_id: fair_ids_to_skip).limit(worker.read_ahead).select(:id).detect do |job|
             count = ready_scope.where(id: job.id).update_all(locked_at: now, locked_by: worker.name)
+            value = increment_fair_id(job, worker)
+
+            if value > @@node.max_concurrency
+              @@fair_ids_to_map[job.fair_id] = Time.now
+              job.update(locked_by: nil, locked_at: nil, run_at: SSDJ::Concurrency::Counter.expire_max_concurrency.since)
+              next
+            end
+
             count == 1 && job.reload
           end
         end
