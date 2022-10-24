@@ -72,6 +72,12 @@ module Delayed
 
           Worker.queues = [@@node.queue]
           set_delayed_job_table_name
+        rescue StandardError => e
+          Delayed::Worker.say e.message
+          Delayed::Worker.say e.backtrace
+
+          Worker.queues = nil
+          set_delayed_job_table_name
         end
 
         def self.ready_to_run(worker_name, max_run_time)
