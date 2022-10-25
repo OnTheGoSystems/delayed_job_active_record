@@ -162,7 +162,7 @@ module Delayed
           # and only read the full job record after we've successfully locked the job.
           # This can have a noticable impact on large read_ahead configurations and large payload jobs.
           @@fair_ids_to_map ||= {}
-          @@fair_ids_to_map = @@fair_ids_to_map.select { |_k, v| v >= SSDJ::Concurrency::Counter.expire_max_concurrency }.to_h
+          @@fair_ids_to_map = @@fair_ids_to_map.select { |_k, v| v >= SSDJ::Concurrency::Counter.expire_max_concurrency.ago }.to_h
           fair_ids_to_skip = @@fair_ids_to_map.keys
 
           AppLog.info(SSDJ::Concurrency::Counter, worker: worker.name, queue: worker.queues, skip: fair_ids_to_skip, map: @@fair_ids_to_map) unless @@fair_ids_to_map.empty?
