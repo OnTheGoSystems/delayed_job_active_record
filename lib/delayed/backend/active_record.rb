@@ -73,8 +73,7 @@ module Delayed
           Worker.queues = [@@node.queue]
           set_delayed_job_table_name
         rescue StandardError => e
-          Delayed::Worker.say e.message
-          Delayed::Worker.say e.backtrace
+          AppLog.exception(e, self)
 
           Worker.queues = nil
           set_delayed_job_table_name
@@ -145,8 +144,16 @@ module Delayed
           end
         end
 
-        def increment_fair_id(job, worker)
+        def self.increment_fair_id(job, worker)
           SSDJ::Concurrency::Counter.new(queue: worker.queues.join, fair_id: job.fair_id).increment
+        end
+
+        def self.decrement_fair_id(job, worker)
+          SSDJ::Concurrency::Counter.new(queue: worker.queues.join, fair_id: job.fair_id).decrement
+        end
+
+        def self.read_fair_id(job, worker)
+          SSDJ::Concurrency::Counter.new(queue: worker.queues.join, fair_id: job.fair_id).read
         end
 
         def self.reserve_with_scope_using_default_sql(ready_scope, worker, now)
@@ -155,19 +162,25 @@ module Delayed
           # and only read the full job record after we've successfully locked the job.
           # This can have a noticable impact on large read_ahead configurations and large payload jobs.
           @@fair_ids_to_map ||= {}
-          fair_ids_to_skip = @@fair_ids_to_map.select { |_k, v| v >= SSDJ::Concurrency::Counter.expire_max_concurrency }.map(&:first)
+          @@fair_ids_to_map = @@fair_ids_to_map.select { |_k, v| v >= SSDJ::Concurrency::Counter.expire_max_concurrency }.to_h
+          fair_ids_to_skip = @@fair_ids_to_map.keys
+
+          AppLog.info(SSDJ::Concurrency::Counter, worker: worker.name, queue: worker.queues, skip: fair_ids_to_skip, map: @@fair_ids_to_map) unless @@fair_ids_to_map.empty?
 
           ready_scope.where.not(fair_id: fair_ids_to_skip).limit(worker.read_ahead).select(:id).detect do |job|
             count = ready_scope.where(id: job.id).update_all(locked_at: now, locked_by: worker.name)
-            value = increment_fair_id(job, worker)
+            next if count != 1
 
-            if value > @@node.max_concurrency
+            value = read_fair_id(job.reload, worker)
+
+            if value >= @@node.max_concurrency
               @@fair_ids_to_map[job.fair_id] = Time.now
               job.update(locked_by: nil, locked_at: nil, run_at: SSDJ::Concurrency::Counter.expire_max_concurrency.since)
               next
             end
 
-            count == 1 && job.reload
+            increment_fair_id(job.reload, worker)
+            count == 1 && job
           end
         end
 
