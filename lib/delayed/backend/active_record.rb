@@ -17,8 +17,8 @@ module Delayed
 
         def reserve_sql_strategy=(val)
 
-          unless %i(optimized_sql default_sql fair_sql).include?(val)
-            raise ArgumentError, "allowed values are :optimized_sql or :default_sql, :fair_sql"
+          unless %i(optimized_sql default_sql fair_sql ssdj).include?(val)
+            raise ArgumentError, "allowed values are :optimized_sql or :default_sql, :fair_sql, :ssdj"
           end
 
           @reserve_sql_strategy = val
@@ -115,7 +115,7 @@ module Delayed
         end
 
         def self.reserve_with_scope(ready_scope, worker, now)
-          refresh_node!
+
 
           case Delayed::Backend::ActiveRecord.configuration.reserve_sql_strategy
           # Optimizations for faster lookups on some common databases
@@ -125,6 +125,8 @@ module Delayed
           # See https://github.com/collectiveidea/delayed_job_active_record/pull/89 for more details.
           when :default_sql
             reserve_with_scope_using_default_sql(ready_scope, worker, now)
+          when :ssdj
+            reserve_for_ssdj(ready_scope, worker, now)
           when :fair_sql
             Delayed::Backend::ActiveRecord::FairSql::Service.reserve(ready_scope, worker, now)
           end
@@ -161,8 +163,17 @@ module Delayed
           # Instead of reading the entire job record for our detect loop, we select only the id,
           # and only read the full job record after we've successfully locked the job.
           # This can have a noticable impact on large read_ahead configurations and large payload jobs.
+          ready_scope.limit(worker.read_ahead).select(:id).detect do |job|
+            count = ready_scope.where(id: job.id).update_all(locked_at: now, locked_by: worker.name)
+            count == 1 && job.reload
+          end
+        end
+
+        def self.reserve_for_ssdj(ready_scope, worker, now)
+          refresh_node!
+
           @@fair_ids_to_map ||= {}
-          @@fair_ids_to_map = @@fair_ids_to_map.select { |_k, v| v >= SSDJ::Concurrency::Counter.expire_max_concurrency.ago }.to_h
+          @@fair_ids_to_map = @@fair_ids_to_map.select { |_k, v| v >= @@node&.expire_max_concurrency.to_i.seconds.ago }.to_h
           fair_ids_to_skip = @@fair_ids_to_map.keys
 
           AppLog.info(SSDJ::Concurrency::Counter, worker: worker.name, queue: worker.queues, skip: fair_ids_to_skip, map: @@fair_ids_to_map) unless @@fair_ids_to_map.empty?
@@ -171,15 +182,14 @@ module Delayed
             count = ready_scope.where(id: job.id).update_all(locked_at: now, locked_by: worker.name)
             next if count != 1
 
-            value = read_fair_id(job.reload, worker)
-
-            if value >= @@node.max_concurrency
+            value = increment_fair_id(job.reload, worker)
+            if value > @@node.max_concurrency
               @@fair_ids_to_map[job.fair_id] = Time.now
-              job.update(locked_by: nil, locked_at: nil, run_at: SSDJ::Concurrency::Counter.expire_max_concurrency.since)
+              job.update(locked_by: nil, locked_at: nil, run_at: @@node&.expire_max_concurrency.to_i.seconds.since)
+              decrement_fair_id(job, worker)
               next
             end
 
-            increment_fair_id(job.reload, worker)
             count == 1 && job
           end
         end
