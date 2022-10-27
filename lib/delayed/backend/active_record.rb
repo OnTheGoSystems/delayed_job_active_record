@@ -49,6 +49,11 @@ module Delayed
         scope :for_queues, lambda { |queues = Worker.queues| where(queue: queues) if Array(queues).any? }
 
         before_save :set_default_run_at
+        attr_accessor :current_counter
+
+        class << self
+          attr_accessor :node, :blocked_fair_ids_map
+        end
 
         def self.set_delayed_job_table_name
           name = dynamic_table_name
@@ -67,15 +72,15 @@ module Delayed
         end
 
         def self.refresh_node!
-          @@node ||= (sleep(rand(5) + rand(100) / 100.0) && ::SSDJ::Node.init!)
-          @@node.iteration_check!
+          self.node ||= (sleep(rand(5) + rand(100) / 100.0) && ::SSDJ::Node.init!)
+          self.node.iteration_check!
 
-          Worker.queues = [@@node.queue]
+          Worker.queues = [self.node.queue]
           set_delayed_job_table_name
         rescue StandardError => e
           AppLog.exception(e, self)
 
-          Worker.queues = nil
+          Worker.queues = ['noqueue']
           set_delayed_job_table_name
         end
 
@@ -99,8 +104,8 @@ module Delayed
         # When a worker is exiting, make sure we don't have any locked jobs.
         def self.clear_locks!(worker_name, queues)
           where(locked_by: worker_name).update_all(locked_by: nil, locked_at: nil)
-          SSDJ::Concurrency::Counter.clear_all(fair_ids: @@fair_ids_to_map.keys, queue: queues.join)
-          @@node&.delete
+          SSDJ::Concurrency::Counter.clear_all(fair_ids: self.blocked_fair_ids_map.keys, queue: queues.join)
+          self.node&.delete
         end
 
         def self.reserve(worker, max_run_time = Worker.max_run_time)
@@ -115,8 +120,6 @@ module Delayed
         end
 
         def self.reserve_with_scope(ready_scope, worker, now)
-
-
           case Delayed::Backend::ActiveRecord.configuration.reserve_sql_strategy
           # Optimizations for faster lookups on some common databases
           when :optimized_sql
@@ -146,16 +149,16 @@ module Delayed
           end
         end
 
-        def self.increment_fair_id(job, worker)
-          SSDJ::Concurrency::Counter.new(queue: worker.queues.join, fair_id: job.fair_id).increment
+        def self.increment_fair_id(fair_id, worker)
+          SSDJ::Concurrency::Counter.new(queue: worker.queues.join, fair_id: fair_id).increment
         end
 
-        def self.decrement_fair_id(job, worker)
-          SSDJ::Concurrency::Counter.new(queue: worker.queues.join, fair_id: job.fair_id).decrement
+        def self.decrement_fair_id(fair_id, worker)
+          SSDJ::Concurrency::Counter.new(queue: worker.queues.join, fair_id: fair_id).decrement
         end
 
-        def self.read_fair_id(job, worker)
-          SSDJ::Concurrency::Counter.new(queue: worker.queues.join, fair_id: job.fair_id).read
+        def self.read_fair_id(fair_id, worker)
+          SSDJ::Concurrency::Counter.new(queue: worker.queues.join, fair_id: fair_id).read
         end
 
         def self.reserve_with_scope_using_default_sql(ready_scope, worker, now)
@@ -171,26 +174,34 @@ module Delayed
 
         def self.reserve_for_ssdj(ready_scope, worker, now)
           refresh_node!
+          reserve_for_ssdj_with_blocking(ready_scope, worker, now)
+        end
 
-          @@fair_ids_to_map ||= {}
-          @@fair_ids_to_map = @@fair_ids_to_map.select { |_k, v| v >= @@node&.expire_max_concurrency.to_i.seconds.ago }.to_h
-          fair_ids_to_skip = @@fair_ids_to_map.keys
+        def self.reserve_for_ssdj_with_blocking(ready_scope, worker, now)
+          self.blocked_fair_ids_map ||= {}
+          self.blocked_fair_ids_map = self.blocked_fair_ids_map.select { |_k, v| v >= self.node.expire_max_concurrency.to_i.seconds.ago }.to_h
+          fair_ids_to_skip = self.blocked_fair_ids_map.keys
 
-          AppLog.info(SSDJ::Concurrency::Counter, worker: worker.name, queue: worker.queues, skip: fair_ids_to_skip, map: @@fair_ids_to_map) unless @@fair_ids_to_map.empty?
+          jobs = ready_scope.where.not(fair_id: fair_ids_to_skip).limit(worker.read_ahead).select('id, fair_id').to_a
 
-          ready_scope.where.not(fair_id: fair_ids_to_skip).limit(worker.read_ahead).select(:id).detect do |job|
+          current_counters = SSDJ::Concurrency::Counter.read_all(fair_ids: jobs.map(&:fair_id).uniq, queue: worker.queues.join)
+          jobs.each { |job| job.current_counter = current_counters[job.fair_id].to_i }
+          jobs.reject! { |job| job.current_counter >= self.node.max_concurrency }
+          jobs.sort_by! { |j| [j.current_counter, j.priority] }
+
+          jobs.detect do |job|
             count = ready_scope.where(id: job.id).update_all(locked_at: now, locked_by: worker.name)
             next if count != 1
 
-            value = increment_fair_id(job.reload, worker)
-            if value > @@node.max_concurrency
-              @@fair_ids_to_map[job.fair_id] = Time.now
-              job.update(locked_by: nil, locked_at: nil, run_at: @@node&.expire_max_concurrency.to_i.seconds.since)
-              decrement_fair_id(job, worker)
+            value = increment_fair_id(job.fair_id, worker)
+            if value > self.node.max_concurrency
+              self.blocked_fair_ids_map[job.fair_id] = Time.now
+              job.update(locked_by: nil, locked_at: nil, run_at: self.node&.expire_max_concurrency.to_i.seconds.since)
+              decrement_fair_id(job.fair_id, worker)
               next
             end
 
-            count == 1 && job
+            count == 1 && job.reload
           end
         end
 
