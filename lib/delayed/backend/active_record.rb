@@ -178,27 +178,34 @@ module Delayed
         end
 
         def self.reserve_for_ssdj_with_blocking(ready_scope, worker, now)
-          self.blocked_fair_ids_map ||= {}
-          self.blocked_fair_ids_map = self.blocked_fair_ids_map.select { |_k, v| v >= self.node.expire_max_concurrency.to_i.seconds.ago }.to_h
-          fair_ids_to_skip = self.blocked_fair_ids_map.keys
+          if SSDJ::Config.nodes.use_fair_blocking
+            self.blocked_fair_ids_map ||= {}
+            self.blocked_fair_ids_map = self.blocked_fair_ids_map.select { |_k, v| v >= self.node.expire_max_concurrency.to_i.seconds.ago }.to_h
+            fair_ids_to_skip = self.blocked_fair_ids_map.keys
+            ready_scope = ready_scope.where.not(fair_id: fair_ids_to_skip)
+          end
 
-          jobs = ready_scope.where.not(fair_id: fair_ids_to_skip).limit(worker.read_ahead).select('id, fair_id').to_a
+          jobs = ready_scope.limit(worker.read_ahead).select('id, fair_id, priority').to_a
 
-          current_counters = SSDJ::Concurrency::Counter.read_all(fair_ids: jobs.map(&:fair_id).uniq, queue: worker.queues.join)
-          jobs.each { |job| job.current_counter = current_counters[job.fair_id].to_i }
-          jobs.reject! { |job| job.current_counter >= self.node.max_concurrency }
-          jobs.sort_by! { |j| [j.current_counter, j.priority] }
+          if SSDJ::Config.nodes.use_fair_sorting
+            current_counters = SSDJ::Concurrency::Counter.read_all(fair_ids: jobs.map(&:fair_id).uniq, queue: worker.queues.join)
+            jobs.each { |job| job.current_counter = current_counters[job.fair_id].to_i }
+            jobs.reject! { |job| job.current_counter >= self.node.max_concurrency }
+            jobs.sort_by! { |j| [j.current_counter, j.priority] }
+          end
 
           jobs.detect do |job|
             count = ready_scope.where(id: job.id).update_all(locked_at: now, locked_by: worker.name)
             next if count != 1
 
-            value = increment_fair_id(job.fair_id, worker)
-            if value > self.node.max_concurrency
-              self.blocked_fair_ids_map[job.fair_id] = Time.now
-              job.update(locked_by: nil, locked_at: nil, run_at: self.node&.expire_max_concurrency.to_i.seconds.since)
-              decrement_fair_id(job.fair_id, worker)
-              next
+            if SSDJ::Config.nodes.use_fair_limit
+              value = increment_fair_id(job.fair_id, worker)
+              if value > self.node.max_concurrency
+                self.blocked_fair_ids_map[job.fair_id] = Time.now if SSDJ::Config.nodes.use_fair_blocking
+                job.update(locked_by: nil, locked_at: nil, run_at: self.node&.expire_max_concurrency.to_i.seconds.since)
+                decrement_fair_id(job.fair_id, worker)
+                next
+              end
             end
 
             count == 1 && job.reload
