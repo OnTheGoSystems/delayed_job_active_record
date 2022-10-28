@@ -150,15 +150,15 @@ module Delayed
         end
 
         def self.increment_fair_id(fair_id, worker)
-          SSDJ::Concurrency::Counter.new(queue: worker.queues.join, fair_id: fair_id).increment
+          SSDJ::Concurrency::Counter.new(queue: worker.queues&.join, fair_id: fair_id).increment
         end
 
         def self.decrement_fair_id(fair_id, worker)
-          SSDJ::Concurrency::Counter.new(queue: worker.queues.join, fair_id: fair_id).decrement
+          SSDJ::Concurrency::Counter.new(queue: worker.queues&.join, fair_id: fair_id).decrement
         end
 
         def self.read_fair_id(fair_id, worker)
-          SSDJ::Concurrency::Counter.new(queue: worker.queues.join, fair_id: fair_id).read
+          SSDJ::Concurrency::Counter.new(queue: worker.queues&.join, fair_id: fair_id).read
         end
 
         def self.reserve_with_scope_using_default_sql(ready_scope, worker, now)
