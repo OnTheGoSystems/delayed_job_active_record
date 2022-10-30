@@ -52,11 +52,16 @@ module Delayed
         attr_accessor :current_counter
 
         class << self
-          attr_accessor :node, :blocked_fair_ids_map
+          attr_accessor :node, :blocked_fair_ids_map, :old_table_name
         end
 
         def self.set_delayed_job_table_name
           name = dynamic_table_name
+
+          if name != self.table_name
+            AppLog.info(self, change_table: name)
+          end
+
           self.table_name = name
         end
 
@@ -197,6 +202,7 @@ module Delayed
           jobs.detect do |job|
             count = ready_scope.where(id: job.id).update_all(locked_at: now, locked_by: worker.name)
             next if count != 1
+            AppLog.info(self, worker_name: worker.name, reserved_job_id: job.id, job_queue: job.queue, table_name: self.table_name)
 
             if SSDJ::Config.nodes.use_fair_limit
               value = increment_fair_id(job.fair_id, worker)
