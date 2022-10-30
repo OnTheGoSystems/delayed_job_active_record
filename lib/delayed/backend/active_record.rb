@@ -57,11 +57,6 @@ module Delayed
 
         def self.set_delayed_job_table_name
           name = dynamic_table_name
-
-          if name != self.table_name
-            AppLog.info(self, change_table: name)
-          end
-
           self.table_name = name
         end
 
@@ -107,9 +102,8 @@ module Delayed
         end
 
         # When a worker is exiting, make sure we don't have any locked jobs.
-        def self.clear_locks!(worker_name, queues)
+        def self.clear_locks!(worker_name)
           where(locked_by: worker_name).update_all(locked_by: nil, locked_at: nil)
-          SSDJ::Concurrency::Counter.clear_all(fair_ids: self.blocked_fair_ids_map.keys, queue: queues.join)
           self.node&.delete
         end
 
@@ -190,7 +184,8 @@ module Delayed
             ready_scope = ready_scope.where.not(fair_id: fair_ids_to_skip)
           end
 
-          jobs = ready_scope.limit(worker.read_ahead).select('id, fair_id, priority').to_a
+          ready_scope.instance_variable_get('@table').name = self.table_name
+          jobs = ready_scope.limit(worker.read_ahead).select('id, fair_id, queue, priority').to_a
 
           if SSDJ::Config.nodes.use_fair_sorting
             current_counters = SSDJ::Concurrency::Counter.read_all(fair_ids: jobs.map(&:fair_id).uniq, queue: worker.queues.join)
